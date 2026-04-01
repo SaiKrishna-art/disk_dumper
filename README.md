@@ -1,4 +1,4 @@
-# 💾 Disk Dumper — Bit-to-Bit Storage Extractor
+# Disk Dumper — Bit-to-Bit Storage Extractor
 
 > A forensic-grade, bit-to-bit disk imaging tool for Windows with both a CLI and a modern dark-themed GUI.
 
@@ -8,7 +8,7 @@
 
 ---
 
-## ✨ Features
+## Features
 
 ### Core Imaging Engine
 - **Bit-to-bit raw sector copying** from physical disks and logical drives
@@ -109,7 +109,7 @@ Navigate using the sidebar:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 disk dumper/
@@ -126,7 +126,7 @@ disk dumper/
 
 ---
 
-## 🔧 How It Works
+## How It Works
 
 1. **Device Enumeration** — `disk_utils.py` queries WMI (`Win32_DiskDrive`) for physical disks and `GetLogicalDriveStrings` for volumes.
 2. **Raw Access** — Opens a read-only handle via `win32file.CreateFile` with `FILE_FLAG_NO_BUFFERING`.
@@ -137,7 +137,7 @@ disk dumper/
 
 ---
 
-## 📜 License
+## License
 
 This software is **proprietary**. See [LICENSE](LICENSE) for full terms.
 

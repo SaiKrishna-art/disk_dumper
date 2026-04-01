@@ -25,37 +25,14 @@ from disk_utils import (
 from gui_dumper import GUIDumper
 from hasher import compute_hash_silent, compute_drive_hash_silent, SUPPORTED_ALGORITHMS
 from copyright_guard import enforce_copyright, AUTHOR, COPYRIGHT_NOTICE
+from themes import get_theme, list_themes, save_preference, load_preference
 
 
 # ─── Color Theme ──────────────────────────────────────────────────────────────
 
-COLORS = {
-    "bg_dark": "#0d1117",
-    "bg_card": "#161b22",
-    "bg_sidebar": "#0d1117",
-    "bg_hover": "#1c2333",
-    "bg_input": "#1c2333",
-    "border": "#30363d",
-    "accent": "#00d4aa",
-    "accent_hover": "#00f0c0",
-    "accent_dim": "#0a3d35",
-    "text_primary": "#f0f6fc",
-    "text_secondary": "#8b949e",
-    "text_dim": "#484f58",
-    "success": "#3fb950",
-    "warning": "#d29922",
-    "error": "#f85149",
-    "blue": "#58a6ff",
-    "purple": "#bc8cff",
-    "progress_bg": "#1c2333",
-    "progress_fill": "#00d4aa",
-    "btn_start": "#238636",
-    "btn_start_hover": "#2ea043",
-    "btn_pause": "#9e6a03",
-    "btn_pause_hover": "#bb8009",
-    "btn_stop": "#da3633",
-    "btn_stop_hover": "#f85149",
-}
+# Colors are loaded from the saved theme preference (mutable; updated in-place)
+_current_theme_name = load_preference()
+COLORS = get_theme(_current_theme_name)
 
 
 # ─── Custom Circular Progress Widget ─────────────────────────────────────────
@@ -199,6 +176,9 @@ class DiskDumperApp(ctk.CTk):
         self.devices = []  # combined list of physical + logical
         self.selected_device = None
 
+        # Track current theme
+        self._theme_name = _current_theme_name
+
         # Build UI
         self._build_sidebar()
         self._build_pages()
@@ -250,6 +230,7 @@ class DiskDumperApp(ctk.CTk):
             ("devices",   "Devices",   "💿"),
             ("hash",      "Hash Verify", "🔐"),
             ("log",       "Error Log", "📋"),
+            ("settings",  "Settings",  "⚙️"),
         ]
         for key, label, icon in nav_items:
             btn = SidebarButton(
@@ -306,6 +287,7 @@ class DiskDumperApp(ctk.CTk):
         self._build_devices_page()
         self._build_hash_page()
         self._build_log_page()
+        self._build_settings_page()
 
     def _show_page(self, name: str):
         for key, btn in self.nav_buttons.items():
@@ -931,6 +913,138 @@ class DiskDumperApp(ctk.CTk):
         self.log_text.insert("1.0", "No errors logged yet.\n")
         self.log_text.configure(state="disabled")
 
+    # ── Settings Page ─────────────────────────────────────────────────────
+
+    def _build_settings_page(self):
+        page = ctk.CTkScrollableFrame(
+            self.page_container, fg_color="transparent"
+        )
+        self.pages["settings"] = page
+
+        ctk.CTkLabel(
+            page, text="Settings",
+            font=self.font_title,
+            text_color=COLORS["text_primary"],
+        ).pack(anchor="w", pady=(0, 8))
+
+        ctk.CTkLabel(
+            page, text="Choose a color theme for the interface.",
+            font=self.font_body,
+            text_color=COLORS["text_secondary"],
+        ).pack(anchor="w", pady=(0, 20))
+
+        # Theme cards grid
+        grid = ctk.CTkFrame(page, fg_color="transparent")
+        grid.pack(fill="x")
+
+        for idx, theme_name in enumerate(list_themes()):
+            palette = get_theme(theme_name)
+            is_active = (theme_name == self._theme_name)
+
+            card = ctk.CTkFrame(
+                grid,
+                fg_color=COLORS["bg_card"] if not is_active else COLORS["accent_dim"],
+                corner_radius=14,
+                border_width=2,
+                border_color=COLORS["accent"] if is_active else COLORS["border"],
+            )
+            card.grid(row=idx // 2, column=idx % 2, padx=8, pady=8, sticky="nsew")
+            grid.columnconfigure(idx % 2, weight=1)
+
+            inner = ctk.CTkFrame(card, fg_color="transparent")
+            inner.pack(fill="both", expand=True, padx=16, pady=14)
+
+            # Title row
+            title_row = ctk.CTkFrame(inner, fg_color="transparent")
+            title_row.pack(fill="x", pady=(0, 10))
+
+            active_marker = "  ✓ Active" if is_active else ""
+            ctk.CTkLabel(
+                title_row, text=f"{theme_name}{active_marker}",
+                font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+                text_color=COLORS["accent"] if is_active else COLORS["text_primary"],
+            ).pack(side="left")
+
+            # Color swatches
+            swatch_row = ctk.CTkFrame(inner, fg_color="transparent")
+            swatch_row.pack(fill="x", pady=(0, 10))
+
+            swatch_keys = ["bg_dark", "bg_card", "accent", "accent_dim",
+                           "text_primary", "success", "warning", "error"]
+            for key in swatch_keys:
+                color = palette.get(key, "#888")
+                sw = ctk.CTkFrame(
+                    swatch_row, width=28, height=28,
+                    fg_color=color, corner_radius=6,
+                    border_width=1, border_color=palette.get("border", "#444"),
+                )
+                sw.pack(side="left", padx=2)
+
+            # Apply button
+            if not is_active:
+                ctk.CTkButton(
+                    inner, text="Apply", width=90, height=32,
+                    font=self.font_body,
+                    fg_color=palette["accent"],
+                    hover_color=palette["accent_hover"],
+                    text_color=palette["bg_dark"],
+                    corner_radius=8,
+                    command=lambda n=theme_name: self._apply_theme(n),
+                ).pack(anchor="w")
+            else:
+                ctk.CTkLabel(
+                    inner, text="Currently active",
+                    font=self.font_small,
+                    text_color=COLORS["text_dim"],
+                ).pack(anchor="w")
+
+    # ── Theme Application ─────────────────────────────────────────────────
+
+    def _apply_theme(self, theme_name: str):
+        """Switch to a new theme and rebuild the entire UI."""
+        global _current_theme_name
+        _current_theme_name = theme_name
+        self._theme_name = theme_name
+        COLORS.update(get_theme(theme_name))
+        save_preference(theme_name)
+        self._rebuild_ui()
+
+    def _rebuild_ui(self):
+        """Destroy and rebuild all UI elements with the current COLORS."""
+        # Preserve runtime state
+        selected_device = self.selected_device
+        output_text = self.output_entry.get() if hasattr(self, "output_entry") else "disk_dump.img"
+        sector_val = self.sector_var.get() if hasattr(self, "sector_var") else "4096"
+
+        # Determine light vs dark appearance
+        is_light = COLORS["bg_dark"].lower() in ("#f0f2f5", "#ffffff", "#fafafa")
+        ctk.set_appearance_mode("light" if is_light else "dark")
+
+        # Update window bg
+        self.configure(fg_color=COLORS["bg_dark"])
+
+        # Destroy existing UI
+        self.sidebar.destroy()
+        self.page_container.destroy()
+
+        # Rebuild
+        self._build_sidebar()
+        self._build_pages()
+
+        # Restore state
+        self.selected_device = selected_device
+        if selected_device:
+            self.source_label.configure(
+                text=f"✅  {selected_device['desc']}\n     {selected_device['path']}",
+                text_color=COLORS["success"],
+            )
+        self.output_entry.delete(0, "end")
+        self.output_entry.insert(0, output_text)
+        self.sector_var.set(sector_val)
+
+        # Show settings page so user sees the result
+        self._show_page("settings")
+
     # ── Helpers ───────────────────────────────────────────────────────────
 
     def _card(self, parent, title: str) -> ctk.CTkFrame:
@@ -1264,7 +1378,10 @@ def main():
         _root.destroy()
         sys.exit(1)
 
-    ctk.set_appearance_mode("dark")
+    # Determine appearance from saved theme
+    saved = load_preference()
+    is_light = get_theme(saved)["bg_dark"].lower() in ("#f0f2f5", "#ffffff", "#fafafa")
+    ctk.set_appearance_mode("light" if is_light else "dark")
     ctk.set_default_color_theme("dark-blue")
 
     app = DiskDumperApp()
